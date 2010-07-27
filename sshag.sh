@@ -1,11 +1,11 @@
 # acquired courtesy of
 # http://superuser.com/questions/141044/sharing-the-same-ssh-agent-among-multiple-login-sessions#answer-141241
 
-function sshagent_findsockets {
+function sshag_findsockets {
     find /tmp -uid $(id -u) -type s -name agent.\* 2>/dev/null
 }
 
-function sshagent_testsocket {
+function sshag_testsocket {
     if [ ! -x "$(which ssh-add)" ] ; then
         echo "ssh-add is not available; agent testing aborted"
         return 1
@@ -35,22 +35,22 @@ function sshagent_testsocket {
     fi
 }
 
-function sshagent_init {
+function sshag_init {
     # ssh agent sockets can be attached to a ssh daemon process or an
     # ssh-agent process.
 
     AGENTFOUND=0
 
     # Attempt to find and use the ssh-agent in the current environment
-    if sshagent_testsocket ; then AGENTFOUND=1 ; fi
+    if sshag_testsocket ; then AGENTFOUND=1 ; fi
 
     # If there is no agent in the environment, search /tmp for
     # possible agents to reuse before starting a fresh ssh-agent
     # process.
     if [ $AGENTFOUND = 0 ] ; then
-        for agentsocket in $(sshagent_findsockets) ; do
+        for agentsocket in $(sshag_findsockets) ; do
             if [ $AGENTFOUND != 0 ] ; then break ; fi
-            if sshagent_testsocket $agentsocket ; then AGENTFOUND=1 ; fi
+            if sshag_testsocket $agentsocket ; then AGENTFOUND=1 ; fi
         done
     fi
 
@@ -68,4 +68,4 @@ function sshagent_init {
     ssh-add -l
 }
 
-alias sagent="sshagent_init"
+alias sshag="sshag_init"
