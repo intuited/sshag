@@ -1,22 +1,48 @@
 `sshag`
 =======
 
-This is a sourceable shell include file which provides a way to conveniently hook up with an operating ssh-agent.
+## "Socket to me, baby!"
 
-Usage:
+This is a sourceable shell include file which provides a `sshag` function
+to conveniently hook up with an operating ssh-agent.
+
+It will start a new agent session if it doesn't find an agent to connect with.
+
+You might want to source it from within your `~/.bashrc` file
+or other profile script.
+
+It can also be run as an executable script,
+and its output stored in the relevant environment variable.
+This is particularly useful
+when it is desired to configure a non-shell environment,
+for example that of a text editor.
+
+Messages are emitted on standard out;
+the output will always consist of just the socket location.
+
+## Usage:
+
+Sourced:
 
     $ ssh alotta@fagina.example.com
     Enter passphrase for key '/home/austin/.ssh/id_dsa': ^C
     $ source sshag.sh
     $ sshag
-    Found ssh-agent /tmp/ssh-b0bs1edded/agent.12946
-    2048 0d:db:a1:1a:cc:01:ad:ec:ab:00:d1:ed:eb:ac:1e:00 /home/austin/.ssh/id_dsa (DSA)
+    Keys:
+        2048 0d:db:a1:1a:cc:01:ad:ec:ab:00:d1:ed:eb:ac:1e:00 /home/austin/.ssh/id_dsa (DSA)
+    /tmp/ssh-5ock3tt0m3/agent.6969
     $ ssh alotta@fagina.example.com
     ...
 
-You might want to source it and run it from within your `~/.bashrc` file or other profile script.
+Invoked:
 
-It will start a new agent session if it doesn't find an agent to connect with.
+    $ export SSH_AGENT_SOCK=`sshag.sh`
+    Output should be assigned to the environment variable $SSH_AUTH_SOCK.
+    Keys:
+        2048 0d:db:a1:1a:cc:01:ad:ec:ab:00:d1:ed:eb:ac:1e:00 /home/austin/.ssh/id_dsa (DSA)
+
+Appended to `~/.bashrc`:
+    source ~/lib/sshag/sshag.sh; sshag &>/dev/null
 
 ## Licensing
 

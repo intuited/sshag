@@ -1,3 +1,4 @@
+#!/bin/bash
 # acquired courtesy of
 # http://superuser.com/questions/141044/sharing-the-same-ssh-agent-among-multiple-login-sessions#answer-141241
 
@@ -7,7 +8,7 @@ function sshag_findsockets {
 
 function sshag_testsocket {
     if [ ! -x "$(which ssh-add)" ] ; then
-        echo "ssh-add is not available; agent testing aborted"
+        echo "ssh-add is not available; agent testing aborted" >&2
         return 1
     fi
 
@@ -22,15 +23,14 @@ function sshag_testsocket {
     if [ -S $SSH_AUTH_SOCK ] ; then
         ssh-add -l > /dev/null
         if [ $? = 2 ] ; then
-            echo "Socket $SSH_AUTH_SOCK is dead!  Deleting!"
+            echo "Socket $SSH_AUTH_SOCK is dead!  Deleting!" >&2
             rm -f $SSH_AUTH_SOCK
             return 4
         else
-            echo "Found ssh-agent $SSH_AUTH_SOCK"
             return 0
         fi
     else
-        echo "$SSH_AUTH_SOCK is not a socket!"
+        echo "$SSH_AUTH_SOCK is not a socket!" >&2
         return 3
     fi
 }
@@ -64,8 +64,20 @@ function sshag_init {
     unset AGENTFOUND
     unset agentsocket
 
-    # Finally, show what keys are currently in the agent
-    ssh-add -l
+    { echo "Keys:";  ssh-add -l | sed 's/^/    /'; } >&2
+
+    # Display the found socket
+    echo $SSH_AUTH_SOCK;
 }
 
-alias sshag="sshag_init"
+
+# If we are not being sourced, but rather running as a subshell,
+# let people know how to use the output.
+if [[ $0 =~ sshag ]]; then
+    echo 'Output should be assigned to the environment variable $SSH_AUTH_SOCK.' >&2
+    sshag_init
+# Otherwise, make it convenient to invoke the search.
+# When the alias is invoked, it will modify the shell environment.
+else
+    alias sshag="sshag_init"
+fi
