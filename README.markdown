@@ -13,9 +13,8 @@ or other profile script.
 
 It can also be run as an executable script,
 and its output stored in the relevant environment variable.
-This is particularly useful
-when it is desired to configure a non-shell environment,
-for example that of a text editor.
+This is particularly useful when it is desired
+to configure a non-shell environment, for example, that of a text editor.
 
 Messages are emitted on standard out;
 the output will always consist of just the socket location.
@@ -24,25 +23,45 @@ the output will always consist of just the socket location.
 
 Sourced:
 
+```sh
     $ ssh alotta@fagina.example.com
     Enter passphrase for key '/home/austin/.ssh/id_dsa': ^C
-    $ source sshag.sh
-    $ sshag
+    $ . ~/lib/sshag/sshag.sh
+    $ sshag alotta@fagina.example.com
     Keys:
         2048 0d:db:a1:1a:cc:01:ad:ec:ab:00:d1:ed:eb:ac:1e:00 /home/austin/.ssh/id_dsa (DSA)
     /tmp/ssh-5ock3tt0m3/agent.6969
-    $ ssh alotta@fagina.example.com
-    ...
+```
 
 Invoked:
 
-    $ export SSH_AGENT_SOCK=`sshag.sh`
+```sh
+    $ export SSH_AGENT_SOCK=$(sh ~/lib/sshag/sshag.sh)
     Output should be assigned to the environment variable $SSH_AUTH_SOCK.
     Keys:
         2048 0d:db:a1:1a:cc:01:ad:ec:ab:00:d1:ed:eb:ac:1e:00 /home/austin/.ssh/id_dsa (DSA)
+```
 
 Appended to `~/.bashrc`:
-    source ~/lib/sshag/sshag.sh; sshag &>/dev/null
+
+```sh
+    . ~/lib/sshag/sshag.sh; sshag >/dev/null 2>&1
+```
+
+## History
+
+-   v0.0.20100514
+    - *Zed*: http://superuser.com/a/141241
+-   v1.0.20100726
+    - *intuited*: renamed from `sagent` to `sshag`. Add readme and license documents.
+-   v1.1.20110220
+    - *intuited*: Made it convenient to run the script in a subshell.
+-   v1.2.20160825
+    - *go2null*: Make script POSIX compliant.
+    - *go2null*: Search `$TMPDIR` for agents as well, per OpenSSH man page.
+    - *go2null*: Accept socket passed in.
+    - *go2null*: Accept `user@host` parameter (ala **AddKeysToAgent**) feature,
+          so can use `sshag user@domain` instead of `ssh user@domain`.
 
 ## Licensing
 

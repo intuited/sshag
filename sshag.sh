@@ -1,83 +1,161 @@
-#!/bin/bash
+#!/bin/sh
+
 # acquired courtesy of
 # http://superuser.com/questions/141044/sharing-the-same-ssh-agent-among-multiple-login-sessions#answer-141241
 
-function sshag_findsockets {
-    find /tmp -uid $(id -u) -type s -name agent.\* 2>/dev/null
+main() {
+    # If we are not being sourced, but rather running as a subshell,
+    # let people know how to use the output.
+    if [ "${0#*sshag}" != "$0" ]; then
+        sshad_msg='Output should be assigned to the environment variable $SSH_AUTH_SOCK.'
+        sshag "$@"
+    fi
 }
 
-function sshag_testsocket {
-    if [ ! -x "$(which ssh-add)" ] ; then
-        echo "ssh-add is not available; agent testing aborted" >&2
-        return 1
-    fi
+sshag() {
+    # ssh agent sockets can be attached to an ssh daemon process
+    # or an ssh-agent process.
 
-    if [ X"$1" != X ] ; then
-        export SSH_AUTH_SOCK=$1
-    fi
+    sshag_require_ssh
+    unset agent_found
+    unset agent_socket
+    unset user_hostname
 
-    if [ X"$SSH_AUTH_SOCK" = X ] ; then
-        return 2
-    fi
+    # check any params
+    while [ "$1" ]; do
+      if [ -e "$1" ]; then
+        [ -S "$1" ] && agent_socket="$1"
+      else
+        user_hostname="$1"
+      fi
+      shift
+    done
 
-    if [ -S $SSH_AUTH_SOCK ] ; then
-        ssh-add -l > /dev/null
-        if [ $? = 2 ] ; then
-            echo "Socket $SSH_AUTH_SOCK is dead!  Deleting!" >&2
-            rm -f $SSH_AUTH_SOCK
-            return 4
-        else
-            return 0
-        fi
+    # Attempt to use socket passed in, or
+    #   find and use the ssh-agent in the current environment
+    if sshag_vet_socket "$agent_socket"; then
+        agent_found=1
     else
-        echo "$SSH_AUTH_SOCK is not a socket!" >&2
-        return 3
-    fi
-}
-
-function sshag_init {
-    # ssh agent sockets can be attached to a ssh daemon process or an
-    # ssh-agent process.
-
-    AGENTFOUND=0
-
-    # Attempt to find and use the ssh-agent in the current environment
-    if sshag_testsocket ; then AGENTFOUND=1 ; fi
-
-    # If there is no agent in the environment, search /tmp for
-    # possible agents to reuse before starting a fresh ssh-agent
-    # process.
-    if [ $AGENTFOUND = 0 ] ; then
-        for agentsocket in $(sshag_findsockets) ; do
-            if [ $AGENTFOUND != 0 ] ; then break ; fi
-            if sshag_testsocket $agentsocket ; then AGENTFOUND=1 ; fi
+        # If there is no agent in the environment,
+        # search for possible agents to reuse
+        # before starting a fresh ssh-agent process.
+        for agent_socket in $(sshag_get_sockets) ; do
+            sshag_vet_socket "$agent_socket" && agent_found=1 && break
         done
     fi
 
     # If at this point we still haven't located an agent, it's time to
     # start a new one
-    if [ $AGENTFOUND = 0 ] ; then
-        eval `ssh-agent`
+    [ "$agent_found" ] || eval "$(ssh-agent)"
+
+    if [ "$user_hostname" ]; then
+      sshag_do_ssh "$user_hostname"
+    else
+      # Display the found socket
+      if [ "$sshad_msg" ]; then
+          print_stderr "$sshad_msg"
+          unset sshad_msg
+      fi
+
+      # Display keys currently loaded in the agent
+      print_stderr "Keys:"
+      print_stderr "$(ssh-add -l | sed 's/^/    /')"
+
+      print_return "$SSH_AUTH_SOCK"
     fi
 
     # Clean up
-    unset AGENTFOUND
-    unset agentsocket
-
-    { echo "Keys:";  ssh-add -l | sed 's/^/    /'; } >&2
-
-    # Display the found socket
-    echo $SSH_AUTH_SOCK;
+    unset agent_found
+    unset agent_socket
+    unset user_hostname
 }
 
+# Load first key for specified user@hostname and start `ssh`.
+sshag_do_ssh() {
+    # load identity if one is defined for the user@hostname.
+    identity="$(ssh -G $1 | awk ' /identityfile/ { print $2 } ' | head -n 1)"
+    if [ "$identity" ]; then
+        # leading tilde causes `ssh-add` to fail.
+        identity="$(expand_tilde "$identity")"
 
-# If we are not being sourced, but rather running as a subshell,
-# let people know how to use the output.
-if [[ $0 =~ sshag ]]; then
-    echo 'Output should be assigned to the environment variable $SSH_AUTH_SOCK.' >&2
-    sshag_init
-# Otherwise, make it convenient to invoke the search.
-# When the alias is invoked, it will modify the shell environment.
-else
-    alias sshag="sshag_init"
-fi
+        # load identity if needed
+        if ! ssh-add -L | grep "$(cat ${identity}.pub)" >/dev/null; then
+            if ! ssh-add "$identity"; then
+                print_error "Unable to load identity '$identity'!"
+            fi
+        fi
+    fi
+
+    # start `ssh`
+    ssh "$1"
+
+    # Clean up
+    unset identity
+}
+
+sshag_get_sockets() {
+    for dir in '/tmp' "$TMPDIR"; do
+        find "$dir" -user $(id -u) -type s -path '*/ssh-*/agent.*' 2>/dev/null
+    done | sort -u
+}
+
+sshag_vet_socket() {
+    [ "$1" ] && export SSH_AUTH_SOCK="$1"
+
+    if [ -z "$SSH_AUTH_SOCK" ]; then
+        return 1
+    elif [ -S "$SSH_AUTH_SOCK" ]; then
+        ssh-add -l >/dev/null 2>&1
+        if [ $? -eq 2 ]; then
+            rm -f "$SSH_AUTH_SOCK"
+            print_warning "Socket '$SSH_AUTH_SOCK' is dead!  Deleting!"
+        fi
+    else
+        print_warning "'$SSH_AUTH_SOCK' is not a socket!"
+    fi
+}
+
+sshag_require_ssh() {
+    if [ ! -x "$(command -v ssh)" ]; then
+        exit_error "'ssh' is not available! Aborting!"
+    elif [ ! -x "$(command -v ssh-add)" ]; then
+        exit_error "'ssh-add' is not available! Aborting!"
+    elif [ ! -x "$(command -v ssh-agent)" ]; then
+        exit_error "'ssh-agent' is not available! Aborting!"
+    fi
+}
+
+# HELPERS
+
+expand_tilde() {
+    tilde_less="${1#\~/}"
+    [ "$1" != "$tilde_less" ] && tilde_less="$HOME/$tilde_less"
+    printf "$tilde_less"
+}
+
+exit_error() {
+    printf "ERROR: $@\n" >&2
+    exit 1
+}
+
+print_error() {
+    printf "ERROR: $@\n" >&2
+    return 1
+}
+
+print_return() {
+    printf "$@\n"
+}
+
+# Do not send messages to 'stdout'
+# - it is reserved for outputting $SSH_AUTH_SOCH when invoked in a subshell
+print_stderr() {
+    printf "$@\n" >&2
+}
+
+print_warning() {
+    printf "WARNING: $@\n" >&2
+    return 1
+}
+
+main "$@"
