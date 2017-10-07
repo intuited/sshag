@@ -134,7 +134,7 @@ sshag_do_ssh() {
 # Checks is ~/.ssh/config has
 sshag_config_has_add_keys() {
 	grep '^[[:blank:]]*AddKeysToAgent' \
-		"$HOME/.ssh/config" "/etc/ssh/ssh_config" >/dev/null
+		"$HOME/.ssh/config" "/etc/ssh/ssh_config" >/dev/null 2>&1
 	return $?
 }
 
